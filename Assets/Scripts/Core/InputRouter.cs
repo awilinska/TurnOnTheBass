@@ -8,33 +8,6 @@ namespace TurnOnTheBass
 {
     public static class InputRouter
     {
-        private const float ExternalPressMaxAge = 0.18f;
-        private static readonly float[] ExternalLanePressedAt =
-        {
-            -1000f,
-            -1000f,
-            -1000f,
-            -1000f
-        };
-
-        public static void QueueExternalLanePress(int lane)
-        {
-            if (lane < 0 || lane >= RhythmMinigame.LaneCount)
-            {
-                return;
-            }
-
-            ExternalLanePressedAt[lane] = Time.unscaledTime;
-        }
-
-        public static void ClearExternalLanePresses()
-        {
-            for (int lane = 0; lane < ExternalLanePressedAt.Length; lane++)
-            {
-                ExternalLanePressedAt[lane] = -1000f;
-            }
-        }
-
         public static Vector2 GetMovement()
         {
 #if ENABLE_INPUT_SYSTEM
@@ -81,13 +54,6 @@ namespace TurnOnTheBass
                 return false;
             }
 
-            bool externalPressed = false;
-            if ((Time.unscaledTime - ExternalLanePressedAt[lane]) <= ExternalPressMaxAge)
-            {
-                externalPressed = true;
-                ExternalLanePressedAt[lane] = -1000f;
-            }
-
 #if ENABLE_INPUT_SYSTEM
             Keyboard keyboard = Keyboard.current;
             if (keyboard != null)
@@ -95,17 +61,17 @@ namespace TurnOnTheBass
                 switch (lane)
                 {
                     case 0:
-                        return keyboard.aKey.wasPressedThisFrame || externalPressed;
+                        return keyboard.aKey.wasPressedThisFrame;
                     case 1:
-                        return keyboard.sKey.wasPressedThisFrame || externalPressed;
+                        return keyboard.sKey.wasPressedThisFrame;
                     case 2:
-                        return keyboard.dKey.wasPressedThisFrame || externalPressed;
+                        return keyboard.dKey.wasPressedThisFrame;
                     case 3:
-                        return keyboard.fKey.wasPressedThisFrame || externalPressed;
+                        return keyboard.fKey.wasPressedThisFrame;
                 }
             }
 #endif
-            return externalPressed;
+            return false;
         }
     }
 }

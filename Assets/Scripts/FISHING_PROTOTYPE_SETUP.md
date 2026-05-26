@@ -43,9 +43,9 @@ In `FishingGameController` inspector:
   - `Fishing Timing` (bite delay and `rhythmStartCountdownSeconds`)
   - `Rhythm Gameplay` (speed, density, hit windows, accuracy target)
   - `Rhythm UI` (fullscreen board size/layout and background tint)
-  - `Wacca Layout` (corner lane inset, hit radius, center core, line thickness)
-  - `Wacca Motion` (preview lead and inward speed curve)
-  - `Wacca Notes` (`Rectangle` or `Circle`, note width/diameter)
+  - `Diva Layout` (target spread, hit radius, center core size)
+  - `Diva Motion` (preview lead and movement depth curve)
+  - `Diva Notes` (`Rectangle` or `Circle`, note width/diameter)
 
 ## Song setup per fish
 Each fish has a unique `songResourceName` in `FishCatalog`.
@@ -60,31 +60,9 @@ To add songs:
 
 If a clip is missing, the rhythm chart still works without audio.
 
-## Ukulele microphone input
-To play minigame lanes with your ukulele strings:
-
-1. Add `UkuleleMicLaneInput` to your `GameController` object.
-2. In inspector, keep default string mapping for standard GCEA tuning:
-   - G4 -> lane 0 (`A` lane)
-   - C4 -> lane 1 (`S` lane)
-   - E4 -> lane 2 (`D` lane)
-   - A4 -> lane 3 (`F` lane)
-3. Press Play and allow microphone access.
-4. Pluck a single string to trigger the mapped lane hit.
-
-Tune detection if needed:
-- Increase `toleranceCents` if notes are not detected.
-- Lower `minRmsForDetection` for quieter recording.
-- Increase `onsetRmsDelta` to reduce false triggers.
-- Adjust `globalTriggerCooldown` / `laneCooldownSeconds` to prevent double hits.
-- Enable `drawLaneDebugOutsideMinigame` to visualize lane hits even while exploring.
-
-The component sends hits into `InputRouter` as external lane presses, so keyboard and ukulele can be used together.
-
 ## Core scripts
 - `Assets/Scripts/Bootstrap/FishingPrototypeBootstrap.cs`
 - `Assets/Scripts/Player/TopDownPlayerController.cs`
 - `Assets/Scripts/Fishing/FishingGameController.cs`
 - `Assets/Scripts/Fishing/FishCatalog.cs`
 - `Assets/Scripts/Rhythm/RhythmMinigame.cs`
-- `Assets/Scripts/Audio/UkuleleMicLaneInput.cs`
