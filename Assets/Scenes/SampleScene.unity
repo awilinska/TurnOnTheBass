@@ -938,7 +938,7 @@ SpriteRenderer:
   m_GlobalIlluminationMeshLod: 0
   m_SortingLayerID: 0
   m_SortingLayer: 0
-  m_SortingOrder: 0
+  m_SortingOrder: 1
   m_MaskInteraction: 0
   m_Sprite: {fileID: 21300000, guid: f5f865b91bffc3b478cf8c7289d368a1, type: 3}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
@@ -1168,10 +1168,10 @@ MonoBehaviour:
   maxBiteDelay: 1.25
   rhythmStartCountdownSeconds: 3
   rhythmSettings:
-    speedMultiplier: 1.35
+    speedMultiplier: 1
     chartDensityMultiplier: 1.15
-    noteTravelTime: 0.95
-    introLeadTime: 0.35
+    noteTravelTime: 2.5
+    introLeadTime: 3.645
     perfectWindow: 0.08
     goodWindow: 0.16
     missWindow: 0.24
@@ -1179,23 +1179,21 @@ MonoBehaviour:
     requiredAccuracyDifficultyBonus: 0.17
   boardWidthPercent: 1
   boardHeightPercent: 1
-  lanePaddingPercent: 0.08
-  trackTopPercent: 0.1
-  trackBottomPercent: 0.2
-  hitLineFromBottomPercent: 0.1
+  boardPaddingPercent: 0.04
   rhythmBackgroundColor: {r: 0.02, g: 0.03, b: 0.07, a: 0.92}
-  farWidthPercent: 0.38
-  horizonHorizontalOffsetPercent: 0
-  depthCurve: 1.5
-  laneSliceCount: 120
+  cornerInsetPercent: 0
+  hitRadiusScale: 0.28
+  centerCoreScale: 0.12
+  laneLineThickness: 4
+  hitTargetScale: 0.85
+  centerCoreColor: {r: 0.95, g: 0.95, b: 1, a: 0.9}
   previewLeadPercent: 0.45
-  noteHorizontalPaddingPercent: 0.12
-  farNoteHeightPercent: 0.008
-  nearNoteHeightPercent: 0.026
+  depthCurve: 1.5
+  farNoteSizePercent: 0.022
+  nearNoteSizePercent: 0.046
+  noteShape: 1
   noteWidthMultiplier: 1.3
-  noteShape: 0
   noteCircleDiameterScale: 2
-  laneSeparatorThickness: 2
 --- !u!4 &1914830443
 Transform:
   m_ObjectHideFlags: 0

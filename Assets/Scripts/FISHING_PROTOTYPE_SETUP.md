@@ -43,10 +43,9 @@ In `FishingGameController` inspector:
   - `Fishing Timing` (bite delay and `rhythmStartCountdownSeconds`)
   - `Rhythm Gameplay` (speed, density, hit windows, accuracy target)
   - `Rhythm UI` (fullscreen board size/layout and background tint)
-  - `Rhythm Perspective` (tilt/highway depth, horizon width, preview lead, note scale)
-    - `noteWidthMultiplier` for wider notes
-    - `noteShape` (`Rectangle` or `Circle`)
-    - `noteCircleDiameterScale` for circle size
+  - `Wacca Layout` (corner lane inset, hit radius, center core, line thickness)
+  - `Wacca Motion` (preview lead and inward speed curve)
+  - `Wacca Notes` (`Rectangle` or `Circle`, note width/diameter)
 
 ## Song setup per fish
 Each fish has a unique `songResourceName` in `FishCatalog`.

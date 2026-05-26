@@ -60,31 +60,31 @@ namespace TurnOnTheBass
         [Header("Rhythm UI")]
         [SerializeField, Range(0.5f, 1f)] private float boardWidthPercent = 1f;
         [SerializeField, Range(0.5f, 1f)] private float boardHeightPercent = 1f;
-        [SerializeField, Range(0f, 0.2f)] private float lanePaddingPercent = 0.08f;
-        [SerializeField, Range(0f, 0.3f)] private float trackTopPercent = 0.1f;
-        [SerializeField, Range(0.1f, 0.5f)] private float trackBottomPercent = 0.2f;
-        [SerializeField, Range(0f, 0.25f)] private float hitLineFromBottomPercent = 0.1f;
+        [SerializeField, Range(0f, 0.2f)] private float boardPaddingPercent = 0.04f;
         [SerializeField] private Color rhythmBackgroundColor = new Color(0.02f, 0.03f, 0.07f, 0.92f);
 
-        [Header("Rhythm Perspective")]
-        [SerializeField, Range(0.2f, 0.9f)] private float farWidthPercent = 0.38f;
-        [SerializeField, Range(-0.3f, 0.3f)] private float horizonHorizontalOffsetPercent;
-        [SerializeField, Range(0.6f, 2.5f)] private float depthCurve = 1.5f;
-        [SerializeField, Range(40, 240)] private int laneSliceCount = 120;
-        [SerializeField, Range(0f, 1f)] private float previewLeadPercent = 0.45f;
-        [SerializeField, Range(0.02f, 0.22f)] private float noteHorizontalPaddingPercent = 0.12f;
-        [SerializeField, Range(0.004f, 0.04f)] private float farNoteHeightPercent = 0.008f;
-        [SerializeField, Range(0.01f, 0.08f)] private float nearNoteHeightPercent = 0.026f;
-        [SerializeField, Range(1f, 5f)] private float noteWidthMultiplier = 5f;
-        [SerializeField] private NoteShape noteShape = NoteShape.Rectangle;
-        [SerializeField, Range(0.8f, 2f)] private float noteCircleDiameterScale = 1.2f;
-        [SerializeField, Range(1f, 4f)] private float laneSeparatorThickness = 2f;
+        [Header("Wacca Layout")]
+        [SerializeField, Range(0f, 0.15f)] private float cornerInsetPercent = 0f;
+        [SerializeField, Range(0.03f, 0.45f)] private float hitRadiusScale = 0.16f;
+        [SerializeField, Range(0.04f, 0.4f)] private float centerCoreScale = 0.12f;
+        [SerializeField, Range(1f, 12f)] private float laneLineThickness = 4f;
+        [SerializeField, Range(0.4f, 1.2f)] private float hitTargetScale = 0.9f;
+        [SerializeField] private Color centerCoreColor = new Color(0.95f, 0.95f, 1f, 0.9f);
+
+        [Header("Wacca Motion")]
+        [SerializeField, Range(0f, 1.5f)] private float previewLeadPercent = 1.3f;
+        [SerializeField, Range(0.6f, 2.5f)] private float depthCurve = 1.25f;
+        [SerializeField, Range(0.01f, 0.15f)] private float farNoteSizePercent = 0.022f;
+        [SerializeField, Range(0.01f, 0.15f)] private float nearNoteSizePercent = 0.046f;
+
+        [Header("Wacca Notes")]
+        [SerializeField] private NoteShape noteShape = NoteShape.Circle;
+        [SerializeField, Range(1f, 6f)] private float noteWidthMultiplier = 2.2f;
+        [SerializeField, Range(0.8f, 2f)] private float noteCircleDiameterScale = 1.1f;
 
         private FishCatalog fishCatalog;
         private AudioSource songSource;
         private readonly RhythmMinigame rhythmMinigame = new RhythmMinigame();
-        private readonly float[] nearBoundariesCache = new float[RhythmMinigame.LaneCount + 1];
-        private readonly float[] farBoundariesCache = new float[RhythmMinigame.LaneCount + 1];
 
         private FishingState state = FishingState.Exploring;
         private WaterZone activeZone;
@@ -119,6 +119,7 @@ namespace TurnOnTheBass
             }
 
             ValidateConfig();
+            EnsureMinimumChartLeadForVisualPreview();
             rhythmMinigame.Configure(rhythmSettings);
             EnsureAudioSource();
         }
@@ -129,6 +130,7 @@ namespace TurnOnTheBass
             waterDetector = detector;
             fishCatalog = catalog;
             ValidateConfig();
+            EnsureMinimumChartLeadForVisualPreview();
             rhythmMinigame.Configure(rhythmSettings);
             EnsureAudioSource();
         }
@@ -136,6 +138,7 @@ namespace TurnOnTheBass
         private void OnValidate()
         {
             ValidateConfig();
+            EnsureMinimumChartLeadForVisualPreview();
             rhythmMinigame.Configure(rhythmSettings);
         }
 
@@ -509,48 +512,33 @@ namespace TurnOnTheBass
             DrawRect(boardRect, rhythmBackgroundColor);
             GUI.Box(boardRect, string.Empty);
 
-            float lanePadding = boardRect.width * lanePaddingPercent;
-            float nearLeft = boardRect.x + lanePadding;
-            float nearRight = boardRect.xMax - lanePadding;
-            float nearWidth = nearRight - nearLeft;
-            float nearY = boardRect.yMax - (boardRect.height * trackBottomPercent);
-            float farY = boardRect.y + (boardRect.height * trackTopPercent);
-            float hitLineY = nearY - (boardRect.height * hitLineFromBottomPercent);
+            Vector2 center = new Vector2(boardRect.center.x, boardRect.center.y);
+            float boardRadius = Mathf.Min(boardRect.width, boardRect.height) * 0.5f * (1f - boardPaddingPercent);
+            float hitRadius = boardRadius * hitRadiusScale;
+            float centerRadius = boardRadius * centerCoreScale;
+            float insetX = boardRect.width * cornerInsetPercent;
+            float insetY = boardRect.height * cornerInsetPercent;
 
-            float horizonCenterX = boardRect.center.x + (boardRect.width * horizonHorizontalOffsetPercent);
-            float farWidth = nearWidth * farWidthPercent;
-            float farLeft = horizonCenterX - (farWidth * 0.5f);
-            float farRight = horizonCenterX + (farWidth * 0.5f);
-
-            for (int boundary = 0; boundary <= RhythmMinigame.LaneCount; boundary++)
+            Vector2[] laneStartPoints =
             {
-                float boundaryRatio = boundary / (float)RhythmMinigame.LaneCount;
-                nearBoundariesCache[boundary] = Mathf.Lerp(nearLeft, nearRight, boundaryRatio);
-                farBoundariesCache[boundary] = Mathf.Lerp(farLeft, farRight, boundaryRatio);
+                new Vector2(boardRect.x + insetX, boardRect.y + insetY),
+                new Vector2(boardRect.xMax - insetX, boardRect.y + insetY),
+                new Vector2(boardRect.xMax - insetX, boardRect.yMax - insetY),
+                new Vector2(boardRect.x + insetX, boardRect.yMax - insetY)
+            };
+            Vector2[] laneHitPoints = new Vector2[RhythmMinigame.LaneCount];
+            for (int lane = 0; lane < RhythmMinigame.LaneCount; lane++)
+            {
+                Vector2 fromCenterToCorner = (laneStartPoints[lane] - center).normalized;
+                laneHitPoints[lane] = center + (fromCenterToCorner * hitRadius);
             }
 
             for (int lane = 0; lane < RhythmMinigame.LaneCount; lane++)
             {
-                Color laneShade = LaneColors[lane];
-                laneShade.a = 0.22f;
-                DrawLanePerspectiveFill(laneShade, lane, farY, hitLineY, farBoundariesCache, nearBoundariesCache);
+                Color lineColor = LaneColors[lane];
+                lineColor.a = 0.45f;
+                DrawLine(laneStartPoints[lane], laneHitPoints[lane], laneLineThickness, lineColor);
             }
-
-            DrawLaneBoundaries(farY, hitLineY, farBoundariesCache, nearBoundariesCache);
-
-            for (int lane = 0; lane < RhythmMinigame.LaneCount; lane++)
-            {
-                float leftAtHit = Mathf.Lerp(farBoundariesCache[lane], nearBoundariesCache[lane], 1f);
-                float rightAtHit = Mathf.Lerp(farBoundariesCache[lane + 1], nearBoundariesCache[lane + 1], 1f);
-                Rect labelRect = new Rect(
-                    leftAtHit,
-                    nearY + (boardRect.height * 0.015f),
-                    rightAtHit - leftAtHit,
-                    34f);
-                GUI.Label(labelRect, LaneLabels[lane], centeredStyle);
-            }
-
-            DrawRect(new Rect(nearLeft, hitLineY, nearWidth, 4f), Color.white);
 
             if (state == FishingState.Rhythm)
             {
@@ -563,34 +551,45 @@ namespace TurnOnTheBass
                     }
 
                     float spawnTime = note.HitTime - (rhythmMinigame.NoteTravelTime * (1f + previewLeadPercent));
-                    float progress = Mathf.InverseLerp(spawnTime, note.HitTime, rhythmMinigame.ElapsedTime);
-                    if (progress < 0f || progress > 1.1f)
+                    float visibleStartTime = Mathf.Max(0f, spawnTime);
+                    if (rhythmMinigame.ElapsedTime < visibleStartTime)
+                    {
+                        continue;
+                    }
+
+                    float progress;
+                    if (note.HitTime <= visibleStartTime + 0.0001f)
+                    {
+                        progress = 1f;
+                    }
+                    else
+                    {
+                        progress = Mathf.InverseLerp(visibleStartTime, note.HitTime, rhythmMinigame.ElapsedTime);
+                    }
+
+                    if (progress > 1.1f)
                     {
                         continue;
                     }
 
                     float depth = DepthMap(progress);
-                    float y = Mathf.Lerp(farY, hitLineY, depth);
-                    float laneLeft = Mathf.Lerp(farBoundariesCache[note.Lane], nearBoundariesCache[note.Lane], depth);
-                    float laneRight = Mathf.Lerp(farBoundariesCache[note.Lane + 1], nearBoundariesCache[note.Lane + 1], depth);
-                    float laneWidth = laneRight - laneLeft;
-                    float notePadding = laneWidth * noteHorizontalPaddingPercent;
-                    float noteHeight = Mathf.Lerp(
-                        boardRect.height * farNoteHeightPercent,
-                        boardRect.height * nearNoteHeightPercent,
+                    Vector2 notePosition = Vector2.Lerp(laneStartPoints[note.Lane], laneHitPoints[note.Lane], depth);
+                    float baseSize = Mathf.Lerp(
+                        boardRect.width * farNoteSizePercent,
+                        boardRect.width * nearNoteSizePercent,
                         depth);
-                    float unclampedWidth = (laneWidth - (notePadding * 2f)) * noteWidthMultiplier;
-                    float noteWidth = Mathf.Clamp(unclampedWidth, 3f, laneWidth * 5f);
-                    float centerX = (laneLeft + laneRight) * 0.5f;
-                    Rect noteRect = new Rect(centerX - (noteWidth * 0.5f), y - (noteHeight * 0.5f), noteWidth, noteHeight);
+                    Rect noteRect = new Rect(
+                        notePosition.x - ((baseSize * noteWidthMultiplier) * 0.5f),
+                        notePosition.y - (baseSize * 0.5f),
+                        baseSize * noteWidthMultiplier,
+                        baseSize);
 
                     if (noteShape == NoteShape.Circle)
                     {
-                        float diameter = Mathf.Max(4f, noteHeight * noteCircleDiameterScale);
-                        diameter = Mathf.Min(diameter, noteWidth);
+                        float diameter = Mathf.Max(4f, baseSize * noteCircleDiameterScale);
                         Rect circleRect = new Rect(
-                            centerX - (diameter * 0.5f),
-                            y - (diameter * 0.5f),
+                            notePosition.x - (diameter * 0.5f),
+                            notePosition.y - (diameter * 0.5f),
                             diameter,
                             diameter);
                         DrawCircle(circleRect, LaneColors[note.Lane]);
@@ -601,6 +600,22 @@ namespace TurnOnTheBass
                     }
                 }
             }
+
+            for (int lane = 0; lane < RhythmMinigame.LaneCount; lane++)
+            {
+                float hitTargetDiameter = Mathf.Max(8f, boardRect.width * nearNoteSizePercent * hitTargetScale);
+                Color hitTargetColor = LaneColors[lane];
+                hitTargetColor.a = 0.9f;
+                DrawCircleAt(laneHitPoints[lane], hitTargetDiameter, hitTargetColor);
+
+                Vector2 outwardDirection = (laneStartPoints[lane] - center).normalized;
+                Vector2 labelPosition = laneStartPoints[lane] + (outwardDirection * (hitTargetDiameter * 0.8f));
+                Rect labelRect = new Rect(labelPosition.x - 22f, labelPosition.y - 14f, 44f, 28f);
+                GUI.Label(labelRect, LaneLabels[lane], centeredStyle);
+            }
+
+            DrawCircleAt(center, centerRadius * 2f, centerCoreColor);
+            DrawCircleAt(center, centerRadius * 1.3f, rhythmBackgroundColor);
 
             if (!string.IsNullOrEmpty(feedbackLabel))
             {
@@ -624,21 +639,20 @@ namespace TurnOnTheBass
 
             boardWidthPercent = Mathf.Clamp(boardWidthPercent, 0.5f, 1f);
             boardHeightPercent = Mathf.Clamp(boardHeightPercent, 0.5f, 1f);
-            lanePaddingPercent = Mathf.Clamp(lanePaddingPercent, 0f, 0.2f);
-            trackTopPercent = Mathf.Clamp(trackTopPercent, 0f, 0.3f);
-            trackBottomPercent = Mathf.Clamp(trackBottomPercent, 0.1f, 0.5f);
-            hitLineFromBottomPercent = Mathf.Clamp(hitLineFromBottomPercent, 0f, 0.25f);
-            farWidthPercent = Mathf.Clamp(farWidthPercent, 0.2f, 0.9f);
-            horizonHorizontalOffsetPercent = Mathf.Clamp(horizonHorizontalOffsetPercent, -0.3f, 0.3f);
+            boardPaddingPercent = Mathf.Clamp(boardPaddingPercent, 0f, 0.2f);
+
+            cornerInsetPercent = Mathf.Clamp(cornerInsetPercent, 0f, 0.15f);
+            hitRadiusScale = Mathf.Clamp(hitRadiusScale, 0.05f, 0.8f);
+            centerCoreScale = Mathf.Clamp(centerCoreScale, 0.04f, 0.4f);
+            laneLineThickness = Mathf.Clamp(laneLineThickness, 1f, 12f);
+            hitTargetScale = Mathf.Clamp(hitTargetScale, 0.4f, 1f);
+
+            previewLeadPercent = Mathf.Clamp(previewLeadPercent, 0f, 1.5f);
             depthCurve = Mathf.Clamp(depthCurve, 0.6f, 2.5f);
-            laneSliceCount = Mathf.Clamp(laneSliceCount, 40, 240);
-            previewLeadPercent = Mathf.Clamp01(previewLeadPercent);
-            noteHorizontalPaddingPercent = Mathf.Clamp(noteHorizontalPaddingPercent, 0.02f, 0.22f);
-            farNoteHeightPercent = Mathf.Clamp(farNoteHeightPercent, 0.004f, 0.04f);
-            nearNoteHeightPercent = Mathf.Clamp(nearNoteHeightPercent, farNoteHeightPercent, 0.08f);
-            noteWidthMultiplier = Mathf.Clamp(noteWidthMultiplier, 1f, 5f);
+            farNoteSizePercent = Mathf.Clamp(farNoteSizePercent, 0.01f, 0.15f);
+            nearNoteSizePercent = Mathf.Clamp(nearNoteSizePercent, farNoteSizePercent, 0.15f);
+            noteWidthMultiplier = Mathf.Clamp(noteWidthMultiplier, 1f, 6f);
             noteCircleDiameterScale = Mathf.Clamp(noteCircleDiameterScale, 0.8f, 2f);
-            laneSeparatorThickness = Mathf.Clamp(laneSeparatorThickness, 1f, 4f);
 
             if (rhythmSettings != null)
             {
@@ -646,53 +660,32 @@ namespace TurnOnTheBass
             }
         }
 
-        private void DrawLanePerspectiveFill(
-            Color laneColor,
-            int lane,
-            float farY,
-            float hitLineY,
-            float[] farBoundaries,
-            float[] nearBoundaries)
+        private void EnsureMinimumChartLeadForVisualPreview()
         {
-            for (int slice = 0; slice < laneSliceCount; slice++)
+            if (rhythmSettings == null)
             {
-                float t0 = slice / (float)laneSliceCount;
-                float t1 = (slice + 1) / (float)laneSliceCount;
-                float d0 = DepthMap(t0);
-                float d1 = DepthMap(t1);
-                float dMid = (d0 + d1) * 0.5f;
-                float y0 = Mathf.Lerp(farY, hitLineY, d0);
-                float y1 = Mathf.Lerp(farY, hitLineY, d1);
-                float yMid = Mathf.Lerp(farY, hitLineY, dMid);
-                float stripHeight = Mathf.Max(1f, Mathf.Abs(y1 - y0) + 1f);
-
-                float left = Mathf.Lerp(farBoundaries[lane], nearBoundaries[lane], dMid);
-                float right = Mathf.Lerp(farBoundaries[lane + 1], nearBoundaries[lane + 1], dMid);
-                DrawRect(new Rect(left, yMid - (stripHeight * 0.5f), right - left, stripHeight), laneColor);
+                return;
             }
+
+            // Prevent "first notes too fast": if notes should spawn before t=0, enforce more chart intro lead.
+            float requiredLead = (rhythmSettings.NoteTravelTime * (1f + previewLeadPercent)) + 0.02f;
+            rhythmSettings.EnsureMinimumIntroLead(requiredLead);
         }
 
-        private void DrawLaneBoundaries(float farY, float hitLineY, float[] farBoundaries, float[] nearBoundaries)
+        private static void DrawLine(Vector2 start, Vector2 end, float thickness, Color color)
         {
-            Color separatorColor = new Color(1f, 1f, 1f, 0.22f);
-            for (int boundary = 0; boundary <= RhythmMinigame.LaneCount; boundary++)
+            Vector2 direction = end - start;
+            float length = direction.magnitude;
+            if (length <= 0.001f)
             {
-                for (int slice = 0; slice < laneSliceCount; slice++)
-                {
-                    float t0 = slice / (float)laneSliceCount;
-                    float t1 = (slice + 1) / (float)laneSliceCount;
-                    float d0 = DepthMap(t0);
-                    float d1 = DepthMap(t1);
-                    float dMid = (d0 + d1) * 0.5f;
-                    float y0 = Mathf.Lerp(farY, hitLineY, d0);
-                    float y1 = Mathf.Lerp(farY, hitLineY, d1);
-                    float stripHeight = Mathf.Max(1f, Mathf.Abs(y1 - y0) + 1f);
-                    float x = Mathf.Lerp(farBoundaries[boundary], nearBoundaries[boundary], dMid);
-                    DrawRect(
-                        new Rect(x - (laneSeparatorThickness * 0.5f), Mathf.Min(y0, y1), laneSeparatorThickness, stripHeight),
-                        separatorColor);
-                }
+                return;
             }
+
+            float angle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg;
+            Matrix4x4 previousMatrix = GUI.matrix;
+            GUIUtility.RotateAroundPivot(angle, start);
+            DrawRect(new Rect(start.x, start.y - (thickness * 0.5f), length, thickness), color);
+            GUI.matrix = previousMatrix;
         }
 
         private float DepthMap(float normalizedProgress)
@@ -743,6 +736,16 @@ namespace TurnOnTheBass
             GUI.color = color;
             GUI.DrawTexture(rect, Texture2D.whiteTexture);
             GUI.color = previous;
+        }
+
+        private static void DrawCircleAt(Vector2 center, float diameter, Color color)
+        {
+            Rect rect = new Rect(
+                center.x - (diameter * 0.5f),
+                center.y - (diameter * 0.5f),
+                diameter,
+                diameter);
+            DrawCircle(rect, color);
         }
 
         private static void DrawCircle(Rect rect, Color color)

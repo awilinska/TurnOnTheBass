@@ -11,7 +11,7 @@ namespace TurnOnTheBass
         [SerializeField, Range(0.5f, 2.5f)] private float speedMultiplier = 1.35f;
         [SerializeField, Range(0.5f, 2f)] private float chartDensityMultiplier = 1.15f;
         [SerializeField, Range(0.35f, 2.5f)] private float noteTravelTime = 0.95f;
-        [SerializeField, Range(0f, 2f)] private float introLeadTime = 0.35f;
+        [SerializeField, Range(0f, 8f)] private float introLeadTime = 0.35f;
 
         [Header("Hit Windows")]
         [SerializeField, Range(0.02f, 0.2f)] private float perfectWindow = 0.08f;
@@ -53,7 +53,7 @@ namespace TurnOnTheBass
             speedMultiplier = Mathf.Clamp(speedMultiplier, 0.5f, 2.5f);
             chartDensityMultiplier = Mathf.Clamp(chartDensityMultiplier, 0.5f, 2f);
             noteTravelTime = Mathf.Clamp(noteTravelTime, 0.35f, 2.5f);
-            introLeadTime = Mathf.Clamp(introLeadTime, 0f, 2f);
+            introLeadTime = Mathf.Clamp(introLeadTime, 0f, 8f);
 
             perfectWindow = Mathf.Clamp(perfectWindow, 0.02f, 0.2f);
             goodWindow = Mathf.Clamp(goodWindow, perfectWindow, 0.3f);
@@ -61,6 +61,12 @@ namespace TurnOnTheBass
 
             baseRequiredAccuracy = Mathf.Clamp(baseRequiredAccuracy, 0.4f, 0.9f);
             requiredAccuracyDifficultyBonus = Mathf.Clamp(requiredAccuracyDifficultyBonus, 0f, 0.4f);
+        }
+
+        public void EnsureMinimumIntroLead(float minimumSeconds)
+        {
+            introLeadTime = Mathf.Max(introLeadTime, Mathf.Max(0f, minimumSeconds));
+            introLeadTime = Mathf.Clamp(introLeadTime, 0f, 8f);
         }
     }
 
