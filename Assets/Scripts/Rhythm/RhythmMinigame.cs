@@ -208,7 +208,7 @@ namespace TurnOnTheBass
             }
 
             RhythmNote candidate = null;
-            float candidateDelta = float.MaxValue;
+            float candidateTimeUntilHit = float.MaxValue;
 
             for (int index = 0; index < notes.Count; index++)
             {
@@ -218,14 +218,19 @@ namespace TurnOnTheBass
                     continue;
                 }
 
-                float delta = Mathf.Abs(note.HitTime - elapsedTime);
-                if (delta >= candidateDelta)
+                float timeUntilHit = note.HitTime - elapsedTime;
+                if (timeUntilHit < 0f)
+                {
+                    continue;
+                }
+
+                if (timeUntilHit >= candidateTimeUntilHit)
                 {
                     continue;
                 }
 
                 candidate = note;
-                candidateDelta = delta;
+                candidateTimeUntilHit = timeUntilHit;
             }
 
             if (candidate == null)
@@ -234,13 +239,13 @@ namespace TurnOnTheBass
                 return new HitFeedback { ConsumedInput = true, Label = "Miss" };
             }
 
-            if (candidateDelta <= settings.PerfectWindow)
+            if (candidateTimeUntilHit <= settings.PerfectWindow)
             {
                 ApplyHit(candidate, RhythmJudgement.Perfect, 100);
                 return new HitFeedback { ConsumedInput = true, Label = "Perfect" };
             }
 
-            if (candidateDelta <= settings.GoodWindow)
+            if (candidateTimeUntilHit <= settings.GoodWindow)
             {
                 ApplyHit(candidate, RhythmJudgement.Good, 70);
                 return new HitFeedback { ConsumedInput = true, Label = "Good" };
@@ -283,7 +288,7 @@ namespace TurnOnTheBass
                     continue;
                 }
 
-                if (elapsedTime - note.HitTime <= settings.MissWindow)
+                if (elapsedTime <= note.HitTime)
                 {
                     continue;
                 }

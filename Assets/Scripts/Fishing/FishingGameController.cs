@@ -466,6 +466,11 @@ namespace TurnOnTheBass
                 " | Accuracy " + (rhythmMinigame.Accuracy * 100f).ToString("0.0") + "%", bodyStyle);
             GUILayout.Label(
                 "Required Accuracy: " + (rhythmMinigame.RequiredAccuracy * 100f).ToString("0") + "%", bodyStyle);
+            string orderPreview = BuildUpcomingLaneOrderString(4);
+            if (!string.IsNullOrEmpty(orderPreview))
+            {
+                GUILayout.Label("Next: " + orderPreview, bodyStyle);
+            }
         }
 
         private void DrawCountdownStatus()
@@ -511,19 +516,32 @@ namespace TurnOnTheBass
             Rect boardRect = new Rect(boardX, boardY, boardWidth, boardHeight);
 
             DrawRect(boardRect, rhythmBackgroundColor);
+            DrawRect(boardRect, new Color(0f, 0f, 0f, 0.14f));
             GUI.Box(boardRect, string.Empty);
 
             Vector2 center = new Vector2(boardRect.center.x, boardRect.center.y);
             float boardRadius = Mathf.Min(boardRect.width, boardRect.height) * 0.5f * (1f - boardPaddingPercent);
-            float centerRadius = boardRadius * centerCoreScale;
+            float hitCircleDiameter = Mathf.Max(32f, boardRect.width * nearNoteSizePercent * hitTargetScale * 1.45f);
+            float approachThickness = Mathf.Max(2.5f, hitCircleDiameter * 0.07f);
+            float approachStartScale = 1.95f + (previewLeadPercent * 1.1f);
 
             if (state == FishingState.Rhythm)
             {
                 int visibleNotesDrawn = 0;
+                int visibleOrder = 0;
+                bool hasPreviousVisible = false;
+                Vector2 previousVisibleTarget = Vector2.zero;
+                string laneOrderPreview = string.Empty;
+
                 for (int index = 0; index < rhythmMinigame.Notes.Count; index++)
                 {
                     RhythmNote note = rhythmMinigame.Notes[index];
                     if (note.Judgement != RhythmJudgement.Pending)
+                    {
+                        continue;
+                    }
+
+                    if (rhythmMinigame.ElapsedTime > note.HitTime)
                     {
                         continue;
                     }
@@ -556,55 +574,61 @@ namespace TurnOnTheBass
                         continue;
                     }
 
+                    bool isPrimaryNote = visibleOrder == 0;
                     visibleNotesDrawn++;
-
-                    float depth = DepthMap(progress);
                     Vector2 noteTargetPoint = GetNoteTargetPoint(note, index, boardRect, center);
-                    Vector2 noteSpawnPoint = GetNoteSpawnPoint(note, index, boardRect, noteTargetPoint, boardRadius);
-                    Vector2 notePosition = Vector2.Lerp(noteSpawnPoint, noteTargetPoint, depth);
-                    float baseSize = Mathf.Lerp(
-                        boardRect.width * farNoteSizePercent,
-                        boardRect.width * nearNoteSizePercent,
-                        depth);
-                    float hitTargetDiameter = Mathf.Max(8f, boardRect.width * nearNoteSizePercent * hitTargetScale);
-                    Color hitTargetColor = LaneColors[note.Lane];
-                    hitTargetColor.a = 0.82f;
-                    float pulseScale = 1f + (0.08f * Mathf.Sin((note.HitTime - rhythmMinigame.ElapsedTime) * 16f));
-                    DrawCircleAt(
+                    if (hasPreviousVisible)
+                    {
+                        DrawLine(
+                            previousVisibleTarget,
+                            noteTargetPoint,
+                            new Color(1f, 1f, 1f, 0.1f),
+                            Mathf.Max(1.5f, hitCircleDiameter * 0.07f));
+                    }
+
+                    float approachProgress = Mathf.Clamp01(progress);
+                    float approachScale = Mathf.Lerp(approachStartScale, 1f, approachProgress);
+                    float approachDiameter = hitCircleDiameter * approachScale;
+                    float approachAlpha = Mathf.Lerp(0.95f, 0.2f, approachProgress);
+                    DrawRingAt(
                         noteTargetPoint,
-                        hitTargetDiameter * 1.28f * pulseScale,
-                        new Color(hitTargetColor.r, hitTargetColor.g, hitTargetColor.b, 0.2f));
-                    DrawCircleAt(noteTargetPoint, hitTargetDiameter, hitTargetColor);
-                    DrawCircleAt(noteTargetPoint, hitTargetDiameter * 0.66f, rhythmBackgroundColor);
-                    DrawNoteSymbol(noteTargetPoint, hitTargetDiameter * 0.66f, LaneLabels[note.Lane]);
+                        approachDiameter,
+                        approachThickness,
+                        new Color(1f, 1f, 1f, approachAlpha),
+                        rhythmBackgroundColor);
 
-                    Rect noteRect = new Rect(
-                        notePosition.x - ((baseSize * noteWidthMultiplier) * 0.5f),
-                        notePosition.y - (baseSize * 0.5f),
-                        baseSize * noteWidthMultiplier,
-                        baseSize);
+                    DrawOsuHitCircle(
+                        noteTargetPoint,
+                        hitCircleDiameter,
+                        note.Lane,
+                        (visibleOrder + 1).ToString(),
+                        isPrimaryNote ? 1f : 0.78f);
 
-                    if (noteShape == NoteShape.Circle)
+                    if (visibleOrder < 5)
                     {
-                        float diameter = Mathf.Max(4f, baseSize * noteCircleDiameterScale);
-                        Rect circleRect = new Rect(
-                            notePosition.x - (diameter * 0.5f),
-                            notePosition.y - (diameter * 0.5f),
-                            diameter,
-                            diameter);
-                        DrawCircle(circleRect, LaneColors[note.Lane]);
-                        DrawNoteSymbol(notePosition, diameter, LaneLabels[note.Lane]);
+                        laneOrderPreview += (visibleOrder == 0 ? string.Empty : " -> ") + LaneLabels[note.Lane];
                     }
-                    else
-                    {
-                        DrawRect(noteRect, LaneColors[note.Lane]);
-                        DrawNoteSymbol(notePosition, baseSize, LaneLabels[note.Lane]);
-                    }
+
+                    hasPreviousVisible = true;
+                    previousVisibleTarget = noteTargetPoint;
+                    visibleOrder++;
+                }
+
+                if (!string.IsNullOrEmpty(laneOrderPreview))
+                {
+                    Rect orderRect = new Rect(boardRect.x, boardRect.y + 56f, boardRect.width, 32f);
+                    GUI.Label(orderRect, "Tap Order: " + laneOrderPreview, centeredStyle);
                 }
             }
 
-            DrawCircleAt(center, centerRadius * 1.8f, centerCoreColor);
-            DrawCircleAt(center, centerRadius * 1.1f, rhythmBackgroundColor);
+            DrawRingAt(
+                center,
+                boardRadius * 1.32f,
+                Mathf.Max(2f, boardRadius * 0.012f),
+                new Color(1f, 1f, 1f, 0.08f),
+                rhythmBackgroundColor);
+
+            DrawRhythmLaneLegend(boardRect, hitCircleDiameter);
 
             if (!string.IsNullOrEmpty(feedbackLabel))
             {
@@ -717,6 +741,65 @@ namespace TurnOnTheBass
             GUI.Label(labelRect, label, centeredStyle);
         }
 
+        private void DrawOsuHitCircle(Vector2 centerPoint, float diameter, int lane, string label, float emphasis)
+        {
+            float clampedEmphasis = Mathf.Clamp01(emphasis);
+            Color laneColor = Color.Lerp(new Color(0.15f, 0.16f, 0.2f, 0.95f), LaneColors[lane], clampedEmphasis);
+            Color borderColor = new Color(1f, 1f, 1f, Mathf.Lerp(0.52f, 0.96f, clampedEmphasis));
+            Color innerColor = Color.Lerp(new Color(0.05f, 0.06f, 0.09f, 0.94f), new Color(0.06f, 0.07f, 0.12f, 0.98f), clampedEmphasis);
+            if (noteShape == NoteShape.Rectangle)
+            {
+                float width = diameter * noteWidthMultiplier * 0.58f;
+                float height = diameter * 0.88f;
+                Rect outer = new Rect(centerPoint.x - (width * 0.64f), centerPoint.y - (height * 0.64f), width * 1.28f, height * 1.28f);
+                Rect middle = new Rect(centerPoint.x - (width * 0.5f), centerPoint.y - (height * 0.5f), width, height);
+                Rect inner = new Rect(centerPoint.x - (width * 0.31f), centerPoint.y - (height * 0.31f), width * 0.62f, height * 0.62f);
+                DrawRect(outer, borderColor);
+                DrawRect(middle, laneColor);
+                DrawRect(inner, innerColor);
+                DrawNoteSymbol(centerPoint, height * 0.64f, label);
+                return;
+            }
+
+            float finalDiameter = diameter * noteCircleDiameterScale;
+            DrawCircleAt(centerPoint, finalDiameter * 1.24f, borderColor);
+            DrawCircleAt(centerPoint, finalDiameter, laneColor);
+            DrawCircleAt(centerPoint, finalDiameter * 0.62f, innerColor);
+            DrawNoteSymbol(centerPoint, finalDiameter * 0.64f, label);
+        }
+
+        private void DrawRhythmLaneLegend(Rect boardRect, float hitCircleDiameter)
+        {
+            float spacing = hitCircleDiameter * 1.42f;
+            float startX = boardRect.x + (boardRect.width * 0.5f) - (spacing * 1.5f);
+            float y = boardRect.yMax - (hitCircleDiameter * 1.1f);
+            for (int lane = 0; lane < LaneLabels.Length; lane++)
+            {
+                Vector2 position = new Vector2(startX + (lane * spacing), y);
+                DrawOsuHitCircle(position, hitCircleDiameter * 0.62f, lane, LaneLabels[lane], 0.86f);
+            }
+        }
+
+        private string BuildUpcomingLaneOrderString(int maxCount)
+        {
+            int count = Mathf.Max(1, maxCount);
+            string result = string.Empty;
+            int added = 0;
+            for (int i = 0; i < rhythmMinigame.Notes.Count && added < count; i++)
+            {
+                RhythmNote note = rhythmMinigame.Notes[i];
+                if (note.Judgement != RhythmJudgement.Pending)
+                {
+                    continue;
+                }
+
+                result += (added == 0 ? string.Empty : " -> ") + LaneLabels[note.Lane];
+                added++;
+            }
+
+            return result;
+        }
+
         private static float Hash01(float seed)
         {
             float hashed = Mathf.Sin(seed * 12.9898f) * 43758.547f;
@@ -790,6 +873,32 @@ namespace TurnOnTheBass
             GUI.color = color;
             GUI.DrawTexture(rect, texture);
             GUI.color = previous;
+        }
+
+        private static void DrawRingAt(Vector2 center, float diameter, float thickness, Color color, Color innerColor)
+        {
+            float innerDiameter = Mathf.Max(0f, diameter - (thickness * 2f));
+            DrawCircleAt(center, diameter, color);
+            if (innerDiameter > 0f && innerColor.a > 0f)
+            {
+                DrawCircleAt(center, innerDiameter, innerColor);
+            }
+        }
+
+        private static void DrawLine(Vector2 start, Vector2 end, Color color, float thickness)
+        {
+            Vector2 direction = end - start;
+            float length = direction.magnitude;
+            if (length <= 0.01f)
+            {
+                return;
+            }
+
+            float angle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg;
+            Matrix4x4 previousMatrix = GUI.matrix;
+            GUIUtility.RotateAroundPivot(angle, start);
+            DrawRect(new Rect(start.x, start.y - (thickness * 0.5f), length, thickness), color);
+            GUI.matrix = previousMatrix;
         }
 
         private static Texture2D GetCircleTexture()
