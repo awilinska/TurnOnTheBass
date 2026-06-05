@@ -46,32 +46,5 @@ namespace TurnOnTheBass
 #endif
             return false;
         }
-
-        public static bool WasLanePressed(int lane)
-        {
-            if (lane < 0 || lane >= RhythmMinigame.LaneCount)
-            {
-                return false;
-            }
-
-#if ENABLE_INPUT_SYSTEM
-            Keyboard keyboard = Keyboard.current;
-            if (keyboard != null)
-            {
-                switch (lane)
-                {
-                    case 0:
-                        return keyboard.aKey.wasPressedThisFrame;
-                    case 1:
-                        return keyboard.sKey.wasPressedThisFrame;
-                    case 2:
-                        return keyboard.dKey.wasPressedThisFrame;
-                    case 3:
-                        return keyboard.fKey.wasPressedThisFrame;
-                }
-            }
-#endif
-            return false;
-        }
     }
 }

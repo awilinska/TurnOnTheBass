@@ -1,14 +1,11 @@
-# Fishing Rhythm Prototype
+# Fishing Prototype
 
 ## What this includes
 - WASD top-down movement.
 - Water zones (`Ocean`, `Lake`, `River`) with unique fish pools.
 - Press `E` or `F` near water to start fishing.
-- Hook phase, then a 4-lane rhythm minigame (`A/S/D/F`).
-- Minigame score controls fish catch result:
-  - success/fail (fish caught or escaped)
-  - quality grade
-  - final fish size
+- A short bite delay followed by a Canvas rhythm minigame.
+- Catch result quality and size are based on minigame accuracy.
 
 ## Runtime bootstrap
 - `FishingPrototypeBootstrap` auto-builds a test scene at runtime if no `FishingGameController` exists:
@@ -19,7 +16,7 @@
 
 This means `SampleScene` can stay empty and still be playable in Play Mode.
 
-## Manual scene setup (when you add FishingGameController yourself)
+## Manual scene setup
 If you place `FishingGameController` in the scene, runtime bootstrap will not auto-create gameplay objects.
 
 Required objects:
@@ -28,7 +25,7 @@ Required objects:
    - `Rigidbody2D` (`Gravity Scale = 0`, freeze Z rotation)
    - non-trigger `Collider2D`
    - `PlayerWaterDetector`
-2. Water objects (ocean/lake/river), each with:
+2. Water objects, each with:
    - trigger `Collider2D`
    - `WaterZone` (set `WaterType` and `ZoneName`)
 3. Camera:
@@ -36,33 +33,35 @@ Required objects:
    - orthographic camera
 
 In `FishingGameController` inspector:
-- Assign `Player`
-- Assign `Water Detector` (or leave empty and enable `Auto Find Player If Missing`)
-- Keep `Use Default Fish Catalog` enabled unless you will inject your own catalog in code.
-- Tune gameplay directly from inspector:
-  - `Fishing Timing` (bite delay and `rhythmStartCountdownSeconds`)
-  - `Rhythm Gameplay` (speed, density, hit windows, accuracy target)
-  - `Rhythm UI` (fullscreen board size/layout and background tint)
-  - `Diva Layout` (target spread, hit radius, center core size)
-  - `Diva Motion` (preview lead and movement depth curve)
-  - `Diva Notes` (`Rectangle` or `Circle`, note width/diameter)
+- Assign `Player`.
+- Assign `Water Detector`, or leave empty and enable `Auto Find Player If Missing`.
+- Assign `Rhythm Minigame` to the `CanvasRhythmGame` component under the Canvas.
+- Keep `Use Default Fish Catalog` enabled unless you inject your own catalog in code.
+- Tune `Fishing Timing` to control bite delay.
+- Tune `Minigame Result` to control the required accuracy for catching the fish.
 
-## Song setup per fish
-Each fish has a unique `songResourceName` in `FishCatalog`.
+In `CanvasRhythmGame` inspector:
+- Assign `Play Area`, `Note Parent`, and `Target Note`.
+- Assign note prefabs to the Green, Blue, Black, and White lanes.
+- The script calculates lane bottom spawn points automatically and moves notes directly toward the target note on angled paths.
+- The rhythm panel can stay inactive by default; fishing activates it when a fish is hooked.
+- Temporary keyboard controls are `A/S/D/F` for Green/Blue/Black/White.
+- During the note sequence, spin prompts pause new note spawning, show `SpinText`, pulse the target image, and require spamming `R`.
+- Each `R` tap currently counts as one spin within the active prompt and updates the label as `SPIN x1`, `SPIN x2`, and so on. The text hides when the prompt ends and resets on the next prompt.
+- `AccuracyText` and `NoteHitText` can be assigned as TextMeshProUGUI fields.
+- Hit labels are inspector strings: `PERFECT`, `GOOD`, `MEH`, and `MISSED` by default.
+- Tune lane spacing, note speed, spawn interval, hit windows, note count, spin presses, pulse speed, pulse scale, and score values in the inspector.
 
-To add songs:
-1. Create folder: `Assets/Resources/Songs`
-2. Add audio clips with matching names, for example:
-   - `ocean_tuna.wav`
-   - `lake_bass.wav`
-   - `river_salmon.wav`
-3. Clips will be loaded automatically with `Resources.Load<AudioClip>("Songs/<name>")`.
-
-If a clip is missing, the rhythm chart still works without audio.
+## Custom controller
+- `PicoSerialRhythmInput` reads the Raspberry Pi Pico serial output at `9600` baud.
+- Set `Port Name` to the Pico COM port, for example `COM3`.
+- `BUTTON_1..4 pressed` trigger the Green, Blue, Black, and White lanes.
+- `OBROT:` messages trigger the spin/reel input while a spin prompt is active.
+- Enable `Log Serial Lines` temporarily to verify incoming messages in the Unity Console.
 
 ## Core scripts
 - `Assets/Scripts/Bootstrap/FishingPrototypeBootstrap.cs`
 - `Assets/Scripts/Player/TopDownPlayerController.cs`
 - `Assets/Scripts/Fishing/FishingGameController.cs`
 - `Assets/Scripts/Fishing/FishCatalog.cs`
-- `Assets/Scripts/Rhythm/RhythmMinigame.cs`
+- `Assets/Scripts/Rhythm/CanvasRhythmGame.cs`
