@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading;
 using Microsoft.Win32.SafeHandles;
 using UnityEngine;
+using TurnOnTheBass.UI;
 
 namespace TurnOnTheBass
 {
@@ -13,6 +14,10 @@ namespace TurnOnTheBass
         [Header("Rhythm Target")]
         [SerializeField] private CanvasRhythmGame rhythmGame;
         [SerializeField] private bool autoFindRhythmGame = true;
+
+        [Header("UI Navigation")]
+        [SerializeField] private bool enableUiNavigation = true;
+        [SerializeField] private bool preferRhythmInputWhilePlaying = true;
 
         [Header("Serial Port")]
         [SerializeField] private bool connectOnStart = true;
@@ -191,42 +196,124 @@ namespace TurnOnTheBass
 
             if (line.Equals(button1Message, StringComparison.OrdinalIgnoreCase))
             {
-                HandleButtonPress(0);
+                HandleControllerButton(0);
                 return;
             }
 
             if (line.Equals(button2Message, StringComparison.OrdinalIgnoreCase))
             {
-                HandleButtonPress(1);
+                HandleControllerButton(1);
                 return;
             }
 
             if (line.Equals(button3Message, StringComparison.OrdinalIgnoreCase))
             {
-                HandleButtonPress(2);
+                HandleControllerButton(2);
                 return;
             }
 
             if (line.Equals(button4Message, StringComparison.OrdinalIgnoreCase))
             {
-                HandleButtonPress(3);
+                HandleControllerButton(3);
             }
         }
 
-        private void HandleButtonPress(int laneIndex)
+        private void HandleControllerButton(int buttonIndex)
         {
-            if (laneIndex < 0 || laneIndex >= lastButtonPressTimes.Length)
+            if (buttonIndex < 0 || buttonIndex >= lastButtonPressTimes.Length)
             {
                 return;
             }
 
             float now = Time.unscaledTime;
-            if (now - lastButtonPressTimes[laneIndex] < sameButtonIgnoreSeconds)
+            if (now - lastButtonPressTimes[buttonIndex] < sameButtonIgnoreSeconds)
             {
                 return;
             }
 
-            lastButtonPressTimes[laneIndex] = now;
+            lastButtonPressTimes[buttonIndex] = now;
+
+            if (TryHandleUiButton(buttonIndex))
+            {
+                return;
+            }
+
+            HandleRhythmButton(buttonIndex);
+        }
+
+        private bool TryHandleUiButton(int buttonIndex)
+        {
+            if (!enableUiNavigation || ShouldUseRhythmInput())
+            {
+                return false;
+            }
+
+            switch (buttonIndex)
+            {
+                case 0:
+                    return TrySubmitActiveUi();
+                case 2:
+                    return TryMoveActiveUi(-1);
+                case 3:
+                    return TryMoveActiveUi(1);
+                default:
+                    return false;
+            }
+        }
+
+        private bool ShouldUseRhythmInput()
+        {
+            return preferRhythmInputWhilePlaying &&
+                   rhythmGame != null &&
+                   rhythmGame.gameObject.activeInHierarchy &&
+                   rhythmGame.IsPlaying;
+        }
+
+        private bool TryMoveActiveUi(int direction)
+        {
+            SongCarouselSelector carousel = FindActiveSongCarousel();
+            if (carousel != null)
+            {
+                carousel.Move(direction);
+                return true;
+            }
+
+            ControllerMenuNavigator menu = FindActiveMenuNavigator();
+            if (menu != null)
+            {
+                menu.Move(direction);
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TrySubmitActiveUi()
+        {
+            SongCarouselSelector carousel = FindActiveSongCarousel();
+            if (carousel != null)
+            {
+                carousel.ConfirmSelection();
+                return true;
+            }
+
+            ControllerMenuNavigator menu = FindActiveMenuNavigator();
+            if (menu != null)
+            {
+                menu.ActivateSelected();
+                return true;
+            }
+
+            return false;
+        }
+
+        private void HandleRhythmButton(int laneIndex)
+        {
+            if (rhythmGame == null)
+            {
+                return;
+            }
+
             rhythmGame.HandleLanePressed(laneIndex);
         }
 
@@ -255,6 +342,36 @@ namespace TurnOnTheBass
                 if (game != null && game.gameObject.scene.IsValid())
                 {
                     return game;
+                }
+            }
+
+            return null;
+        }
+
+        private static SongCarouselSelector FindActiveSongCarousel()
+        {
+            SongCarouselSelector[] carousels = Resources.FindObjectsOfTypeAll<SongCarouselSelector>();
+            for (int index = 0; index < carousels.Length; index++)
+            {
+                SongCarouselSelector carousel = carousels[index];
+                if (carousel != null && carousel.gameObject.scene.IsValid() && carousel.isActiveAndEnabled)
+                {
+                    return carousel;
+                }
+            }
+
+            return null;
+        }
+
+        private static ControllerMenuNavigator FindActiveMenuNavigator()
+        {
+            ControllerMenuNavigator[] menus = Resources.FindObjectsOfTypeAll<ControllerMenuNavigator>();
+            for (int index = 0; index < menus.Length; index++)
+            {
+                ControllerMenuNavigator menu = menus[index];
+                if (menu != null && menu.gameObject.scene.IsValid() && menu.isActiveAndEnabled)
+                {
+                    return menu;
                 }
             }
 

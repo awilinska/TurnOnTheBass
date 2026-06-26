@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7950b494b0e14906b5edc598f141f5c6, type: 3}
+  m_Name: Disapperance
+  m_EditorClassIdentifier: Assembly-CSharp::TurnOnTheBass.RhythmSongDefinition
+  audioClip: {fileID: 8300000, guid: 449da29a173257a4587e79f0c0beea5e, type: 3}
+  autoGenerateFromAudio: 1
+  maximumGeneratedNotes: 0
+  bpm: 120
+  firstBeatOffsetSeconds: 1.5
+  useBeatSync: 1
+  startBeat: 0
+  noteBeatInterval: 1
+  maxNotes: 0
+  randomizeLanesWhenPatternEmpty: 1
+  lanePattern: 00000000010000000200000003000000
+  enableSpinPhase: 1
+  firstSpinAfterNotes: 16
+  spinEveryNotes: 16
+  requiredSpinPresses: 12
+  useSpinTimeLimit: 1
+  spinTimeLimitSeconds: 3
