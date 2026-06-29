@@ -18,6 +18,10 @@ namespace TurnOnTheBass
         [Header("UI Navigation")]
         [SerializeField] private bool enableUiNavigation = true;
         [SerializeField] private bool preferRhythmInputWhilePlaying = true;
+        [SerializeField] private UiScreenSwitcher screenSwitcher;
+        [SerializeField] private GameObject finishedScreen;
+        [SerializeField] private GameObject menuScreen;
+        [SerializeField] private bool button4ReturnsFromFinishedToMenu = true;
 
         [Header("Serial Port")]
         [SerializeField] private bool connectOnStart = true;
@@ -52,6 +56,8 @@ namespace TurnOnTheBass
             {
                 rhythmGame = FindRhythmGameIncludingInactive();
             }
+
+            ResolveUiReferencesIfMissing();
         }
 
         private void Start()
@@ -248,6 +254,12 @@ namespace TurnOnTheBass
                 return false;
             }
 
+            if (button4ReturnsFromFinishedToMenu && buttonIndex == 3 && IsFinishedScreenActive())
+            {
+                ShowMenuScreen();
+                return true;
+            }
+
             switch (buttonIndex)
             {
                 case 0:
@@ -286,6 +298,51 @@ namespace TurnOnTheBass
             }
 
             return false;
+        }
+
+        private bool IsFinishedScreenActive()
+        {
+            ResolveUiReferencesIfMissing();
+            return finishedScreen != null && finishedScreen.activeInHierarchy;
+        }
+
+        private void ShowMenuScreen()
+        {
+            ResolveUiReferencesIfMissing();
+
+            if (screenSwitcher != null && menuScreen != null)
+            {
+                screenSwitcher.Show(menuScreen);
+                return;
+            }
+
+            if (menuScreen != null)
+            {
+                menuScreen.SetActive(true);
+            }
+
+            if (finishedScreen != null)
+            {
+                finishedScreen.SetActive(false);
+            }
+        }
+
+        private void ResolveUiReferencesIfMissing()
+        {
+            if (screenSwitcher == null)
+            {
+                screenSwitcher = FindSceneObjectIncludingInactive<UiScreenSwitcher>();
+            }
+
+            if (finishedScreen == null)
+            {
+                finishedScreen = FindSceneGameObjectByName("Finished");
+            }
+
+            if (menuScreen == null)
+            {
+                menuScreen = FindSceneGameObjectByName("Menu");
+            }
         }
 
         private bool TrySubmitActiveUi()
@@ -372,6 +429,36 @@ namespace TurnOnTheBass
                 if (menu != null && menu.gameObject.scene.IsValid() && menu.isActiveAndEnabled)
                 {
                     return menu;
+                }
+            }
+
+            return null;
+        }
+
+        private static T FindSceneObjectIncludingInactive<T>() where T : UnityEngine.Object
+        {
+            T[] objects = Resources.FindObjectsOfTypeAll<T>();
+            for (int index = 0; index < objects.Length; index++)
+            {
+                T candidate = objects[index];
+                if (candidate is Component component && component.gameObject.scene.IsValid())
+                {
+                    return candidate;
+                }
+            }
+
+            return null;
+        }
+
+        private static GameObject FindSceneGameObjectByName(string objectName)
+        {
+            GameObject[] objects = Resources.FindObjectsOfTypeAll<GameObject>();
+            for (int index = 0; index < objects.Length; index++)
+            {
+                GameObject candidate = objects[index];
+                if (candidate != null && candidate.scene.IsValid() && candidate.name == objectName)
+                {
+                    return candidate;
                 }
             }
 
