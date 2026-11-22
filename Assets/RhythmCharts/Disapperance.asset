@@ -12,7 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7950b494b0e14906b5edc598f141f5c6, type: 3}
   m_Name: Disapperance
   m_EditorClassIdentifier: Assembly-CSharp::TurnOnTheBass.RhythmSongDefinition
-  audioClip: {fileID: 8300000, guid: 449da29a173257a4587e79f0c0beea5e, type: 3}
+  audioClip: {fileID: 8300000, guid: fa9f69637dfdb8344ada220190d00d01, type: 3}
+  highScoreId: bb1c856bded51af478e17334b122c5f5
   autoGenerateFromAudio: 1
   maximumGeneratedNotes: 0
   bpm: 120

@@ -54,7 +54,8 @@ In `CanvasRhythmGame` inspector:
 
 ## Custom controller
 - `PicoSerialRhythmInput` reads the Raspberry Pi Pico serial output at `9600` baud.
-- Set `Port Name` to the Pico COM port, for example `COM3`.
+- Leave `Auto Detect Port` enabled on Windows. The game finds the connected Pico and reconnects if Windows assigns it a different COM port. The Unity Console shows the port when the controller connects.
+- If several Raspberry Pi USB serial devices are plugged in, automatic detection opens the first available one. To choose a specific device, turn off `Auto Detect Port` and set `Port Name` to its COM port.
 - `BUTTON_1..4 pressed` trigger the Green, Blue, Black, and White lanes.
 - `OBROT:` messages trigger the spin/reel input while a spin prompt is active.
 - Enable `Log Serial Lines` temporarily to verify incoming messages in the Unity Console.

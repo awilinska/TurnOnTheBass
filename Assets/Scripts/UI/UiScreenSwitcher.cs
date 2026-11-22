@@ -15,6 +15,8 @@ namespace TurnOnTheBass.UI
         private Coroutine delayedDeactivateRoutine;
         private GameObject currentScreen;
 
+        public GameObject CurrentScreen => currentScreen;
+
         private void Start()
         {
             if (startScreen != null)

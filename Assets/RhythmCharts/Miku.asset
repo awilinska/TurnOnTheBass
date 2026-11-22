@@ -10,9 +10,10 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 7950b494b0e14906b5edc598f141f5c6, type: 3}
-  m_Name: OdeToJoy
+  m_Name: Miku
   m_EditorClassIdentifier: Assembly-CSharp::TurnOnTheBass.RhythmSongDefinition
-  audioClip: {fileID: 8300000, guid: 92020d0fbfaa67340a984b1ac2756e7c, type: 3}
+  audioClip: {fileID: 8300000, guid: e98200b0b31c91b43997129f1d493384, type: 3}
+  highScoreId: 04974cdd49e088d47a25a5a1ff77de2c
   autoGenerateFromAudio: 1
   maximumGeneratedNotes: 0
   bpm: 120

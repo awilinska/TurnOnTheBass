@@ -26,9 +26,16 @@ namespace TurnOnTheBass
             }
 
             AudioClip clip = song.AudioClip;
-            float[] samples = new float[clip.samples * clip.channels];
+            float playableDuration = song.PlayableDurationSeconds;
+            int playableSamples = Mathf.Min(clip.samples, Mathf.RoundToInt(playableDuration * clip.frequency));
+            float[] samples = new float[playableSamples * clip.channels];
             try
             {
+                if (clip.loadState == AudioDataLoadState.Unloaded && !clip.LoadAudioData())
+                {
+                    return false;
+                }
+
                 if (!clip.GetData(samples, 0))
                 {
                     return false;
@@ -54,13 +61,13 @@ namespace TurnOnTheBass
             List<Peak> preliminaryPeaks = FindPeaks(novelty, frameDuration, MinimumPreliminaryPeakGapSeconds);
             float estimatedBpm = EstimateBpm(preliminaryPeaks);
             float beatDuration = 60f / estimatedBpm;
-            float firstBeatOffset = preliminaryPeaks.Count > 0 ? preliminaryPeaks[0].TimeSeconds : Mathf.Min(0.5f, clip.length * 0.1f);
+            float firstBeatOffset = preliminaryPeaks.Count > 0 ? preliminaryPeaks[0].TimeSeconds : Mathf.Min(0.5f, playableDuration * 0.1f);
             float minNoteGap = Mathf.Clamp(beatDuration, MinimumPlayableNoteGapSeconds, 0.9f);
-            List<Peak> selectedPeaks = SelectPlayablePeaks(preliminaryPeaks, minNoteGap, clip.length, song.MaximumGeneratedNotes);
+            List<Peak> selectedPeaks = SelectPlayablePeaks(preliminaryPeaks, minNoteGap, playableDuration, song.MaximumGeneratedNotes);
 
             if (selectedPeaks.Count < 4)
             {
-                selectedPeaks = BuildBeatFallback(firstBeatOffset, beatDuration, clip.length, fallbackNoteCount);
+                selectedPeaks = BuildBeatFallback(firstBeatOffset, beatDuration, playableDuration, fallbackNoteCount);
             }
 
             List<RhythmChartNote> notes = BuildNotes(selectedPeaks, laneCount);

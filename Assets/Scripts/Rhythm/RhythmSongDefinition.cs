@@ -5,8 +5,12 @@ namespace TurnOnTheBass
     [CreateAssetMenu(fileName = "Rhythm Song", menuName = "Turn On The Bass/Rhythm Song")]
     public sealed class RhythmSongDefinition : ScriptableObject
     {
+        public const float MaximumDurationSeconds = 90f;
+
         [Header("Audio")]
         [SerializeField] private AudioClip audioClip;
+        [Tooltip("Unique ID used to save this song's high score. Keep it the same when renaming the song.")]
+        [SerializeField] private string highScoreId;
 
         [Header("Auto Chart")]
         [SerializeField] private bool autoGenerateFromAudio = true;
@@ -34,6 +38,8 @@ namespace TurnOnTheBass
         [SerializeField, Min(0.1f)] private float spinTimeLimitSeconds = 3f;
 
         public AudioClip AudioClip => audioClip;
+        public string HighScoreId => string.IsNullOrWhiteSpace(highScoreId) ? name : highScoreId.Trim();
+        public float PlayableDurationSeconds => audioClip != null ? Mathf.Min(audioClip.length, MaximumDurationSeconds) : MaximumDurationSeconds;
         public bool AutoGenerateFromAudio => autoGenerateFromAudio;
         public int MaximumGeneratedNotes => maximumGeneratedNotes;
         public float Bpm => bpm;
@@ -85,7 +91,7 @@ namespace TurnOnTheBass
                 return Mathf.Max(1, fallbackNoteCount);
             }
 
-            float playableSeconds = Mathf.Max(0f, audioClip.length - firstBeatOffsetSeconds);
+            float playableSeconds = Mathf.Max(0f, PlayableDurationSeconds - firstBeatOffsetSeconds);
             int count = Mathf.FloorToInt(playableSeconds / Mathf.Max(0.01f, NoteIntervalSeconds));
             return Mathf.Max(1, count);
         }

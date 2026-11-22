@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -25,8 +26,11 @@ namespace TurnOnTheBass
 
         [Header("Serial Port")]
         [SerializeField] private bool connectOnStart = true;
+        [SerializeField] private bool autoDetectPort = true;
+        [Tooltip("COM port to use when Auto Detect Port is off.")]
         [SerializeField] private string portName = "COM3";
         [SerializeField] private int baudRate = 9600;
+        [Tooltip("Maximum time to wait for bytes when the serial input buffer is empty.")]
         [SerializeField, Min(1)] private int readIntervalTimeoutMs = 50;
         [SerializeField] private bool dtrEnable = true;
         [SerializeField] private bool rtsEnable = true;
@@ -40,15 +44,21 @@ namespace TurnOnTheBass
         [SerializeField] private string button4Message = "BUTTON_4 pressed";
 
         [Header("Input Debounce")]
-        [SerializeField, Min(0f)] private float sameButtonIgnoreSeconds = 0.08f;
+        [Tooltip("Minimum time in seconds between accepted presses of the same controller button.")]
+        [SerializeField, Min(0f)] private float sameButtonIgnoreSeconds = 0.15f;
+
+        private const float ConnectionRetrySeconds = 1f;
 
         private readonly ConcurrentQueue<string> pendingLines = new ConcurrentQueue<string>();
         private readonly float[] lastButtonPressTimes = { -999f, -999f, -999f, -999f };
-        private SafeFileHandle serialHandle;
         private Thread readThread;
-        private volatile bool keepReading;
+        private volatile bool stopReading;
+        private volatile string connectedPort;
+        private string reportedPort;
+        private bool connectionRequested;
+        private float nextConnectionAttemptTime;
 
-        public bool IsConnected => serialHandle != null && !serialHandle.IsInvalid && !serialHandle.IsClosed;
+        public bool IsConnected => !stopReading && connectedPort != null;
 
         private void Awake()
         {
@@ -60,7 +70,7 @@ namespace TurnOnTheBass
             ResolveUiReferencesIfMissing();
         }
 
-        private void Start()
+        private void OnEnable()
         {
             if (connectOnStart)
             {
@@ -70,10 +80,25 @@ namespace TurnOnTheBass
 
         private void Update()
         {
+            string activePort = stopReading ? null : connectedPort;
+            if (activePort != reportedPort)
+            {
+                reportedPort = activePort;
+                if (activePort != null)
+                {
+                    Debug.Log("Pico controller connected on " + activePort + ".", this);
+                }
+            }
+
             while (pendingLines.TryDequeue(out string line))
             {
-                ProcessLine(line);
+                if (!stopReading)
+                {
+                    ProcessLine(line);
+                }
             }
+
+            StartSerialReaderIfNeeded();
         }
 
         private void OnDisable()
@@ -81,35 +106,17 @@ namespace TurnOnTheBass
             Disconnect();
         }
 
-        private void OnDestroy()
-        {
-            Disconnect();
-        }
-
         public void Connect()
         {
-            if (IsConnected)
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+            if (!stopReading && readThread != null && readThread.IsAlive)
             {
                 return;
             }
 
-#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-            try
-            {
-                serialHandle = NativeSerial.Open(portName, baudRate, readIntervalTimeoutMs, dtrEnable, rtsEnable);
-                keepReading = true;
-                readThread = new Thread(ReadSerialLoop)
-                {
-                    IsBackground = true,
-                    Name = "Pico Serial Rhythm Input"
-                };
-                readThread.Start();
-            }
-            catch (Exception exception)
-            {
-                Debug.LogWarning("Could not open Pico serial port " + portName + ": " + exception.Message, this);
-                CleanupSerial();
-            }
+            connectionRequested = true;
+            nextConnectionAttemptTime = 0f;
+            StartSerialReaderIfNeeded();
 #else
             Debug.LogWarning("Pico serial input is currently implemented for Windows editor/player builds.", this);
 #endif
@@ -117,45 +124,128 @@ namespace TurnOnTheBass
 
         public void Disconnect()
         {
-            keepReading = false;
+            connectionRequested = false;
+            stopReading = true;
+            reportedPort = null;
 
             if (readThread != null && readThread.IsAlive)
             {
                 readThread.Join(150);
             }
-
-            CleanupSerial();
         }
 
-        private void ReadSerialLoop()
+        private void StartSerialReaderIfNeeded()
+        {
+            if (!connectionRequested || Time.unscaledTime < nextConnectionAttemptTime ||
+                (readThread != null && readThread.IsAlive))
+            {
+                return;
+            }
+
+            if (stopReading)
+            {
+                while (pendingLines.TryDequeue(out _))
+                {
+                }
+            }
+
+            bool detectPort = autoDetectPort;
+            string manualPort = string.IsNullOrWhiteSpace(portName) ? "COM3" : portName.Trim();
+            connectionRequested = detectPort;
+            nextConnectionAttemptTime = Time.unscaledTime + ConnectionRetrySeconds;
+            stopReading = false;
+            readThread = new Thread(() => ReadSerial(detectPort, manualPort))
+            {
+                IsBackground = true,
+                Name = "Pico Serial Rhythm Input"
+            };
+            readThread.Start();
+        }
+
+        private void ReadSerial(bool detectPort, string manualPort)
+        {
+            try
+            {
+                if (!detectPort)
+                {
+                    TryReadPort(manualPort, false);
+                    return;
+                }
+
+                foreach (string detectedPort in NativeSerial.FindPicoPorts())
+                {
+                    if (stopReading || TryReadPort(detectedPort, true))
+                    {
+                        break;
+                    }
+                }
+            }
+            catch (Exception exception)
+            {
+                if (!stopReading)
+                {
+                    pendingLines.Enqueue("SERIAL_ERROR:" + exception.Message);
+                }
+            }
+        }
+
+        private bool TryReadPort(string port, bool detectPort)
+        {
+            SafeFileHandle handle;
+            try
+            {
+                handle = NativeSerial.Open(port, baudRate, readIntervalTimeoutMs, dtrEnable, rtsEnable);
+            }
+            catch (InvalidOperationException) when (detectPort)
+            {
+                // A device can disappear or be opened by another application during discovery.
+                return false;
+            }
+
+            using (handle)
+            {
+                if (stopReading)
+                {
+                    return true;
+                }
+
+                connectedPort = port;
+                try
+                {
+                    ReadSerialLines(handle);
+                }
+                catch (InvalidOperationException) when (detectPort)
+                {
+                    // Let the next discovery attempt pick up the reconnected device.
+                }
+                finally
+                {
+                    connectedPort = null;
+                }
+            }
+
+            return true;
+        }
+
+        private void ReadSerialLines(SafeFileHandle handle)
         {
             byte[] buffer = new byte[128];
             StringBuilder lineBuilder = new StringBuilder(128);
 
-            while (keepReading && IsConnected)
+            while (!stopReading)
             {
-                try
+                int bytesRead = NativeSerial.Read(handle, buffer);
+                for (int index = 0; index < bytesRead && !stopReading; index++)
                 {
-                    int bytesRead = NativeSerial.Read(serialHandle, buffer);
-                    for (int index = 0; index < bytesRead; index++)
+                    char character = (char)buffer[index];
+                    if (character == '\n')
                     {
-                        char character = (char)buffer[index];
-                        if (character == '\n')
-                        {
-                            EnqueueLine(lineBuilder);
-                            continue;
-                        }
-
-                        if (character != '\r')
-                        {
-                            lineBuilder.Append(character);
-                        }
+                        EnqueueLine(lineBuilder);
                     }
-                }
-                catch (Exception exception)
-                {
-                    pendingLines.Enqueue("SERIAL_ERROR:" + exception.Message);
-                    keepReading = false;
+                    else if (character != '\r')
+                    {
+                        lineBuilder.Append(character);
+                    }
                 }
             }
         }
@@ -254,9 +344,14 @@ namespace TurnOnTheBass
                 return false;
             }
 
-            if (button4ReturnsFromFinishedToMenu && buttonIndex == 3 && IsFinishedScreenActive())
+            if (IsFinishedScreenActive())
             {
-                ShowMenuScreen();
+                if (button4ReturnsFromFinishedToMenu && buttonIndex == 3 &&
+                    (!finishedScreen.TryGetComponent(out RhythmResultsScreen results) || results.CanDismiss))
+                {
+                    ShowMenuScreen();
+                }
+
                 return true;
             }
 
@@ -303,7 +398,8 @@ namespace TurnOnTheBass
         private bool IsFinishedScreenActive()
         {
             ResolveUiReferencesIfMissing();
-            return finishedScreen != null && finishedScreen.activeInHierarchy;
+            return finishedScreen != null && finishedScreen.activeInHierarchy &&
+                   (screenSwitcher == null || screenSwitcher.CurrentScreen == finishedScreen);
         }
 
         private void ShowMenuScreen()
@@ -372,22 +468,6 @@ namespace TurnOnTheBass
             }
 
             rhythmGame.HandleLanePressed(laneIndex);
-        }
-
-        private void CleanupSerial()
-        {
-            if (serialHandle != null)
-            {
-                if (!serialHandle.IsClosed)
-                {
-                    serialHandle.Close();
-                }
-
-                serialHandle.Dispose();
-                serialHandle = null;
-            }
-
-            readThread = null;
         }
 
         private static CanvasRhythmGame FindRhythmGameIncludingInactive()
@@ -469,7 +549,30 @@ namespace TurnOnTheBass
         {
             private const uint GenericRead = 0x80000000;
             private const uint OpenExisting = 3;
-            private const int InvalidHandleValue = -1;
+            private const uint PresentUsbDevices = 0x00000101; // CM_GETIDLIST_FILTER_PRESENT | CM_GETIDLIST_FILTER_ENUMERATOR
+            private const uint KeyQueryValue = 0x0001;
+            private const uint RegistryOpenExisting = 0x0001;
+            private const uint RegistryHardware = 0;
+            private const uint RegistryString = 0x00000002; // RRF_RT_REG_SZ
+            private const string PicoUsbIdPrefix = @"USB\VID_2E8A&PID_";
+
+            [DllImport("cfgmgr32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+            private static extern uint CM_Get_Device_ID_List_SizeW(out uint length, string filter, uint flags);
+
+            [DllImport("cfgmgr32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+            private static extern uint CM_Get_Device_ID_ListW(string filter, [Out] char[] buffer, uint length, uint flags);
+
+            [DllImport("cfgmgr32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+            private static extern uint CM_Locate_DevNodeW(out uint device, string deviceId, uint flags);
+
+            [DllImport("cfgmgr32.dll")]
+            private static extern uint CM_Open_DevNode_Key(uint device, uint access, uint profile, uint disposition, out IntPtr key, uint flags);
+
+            [DllImport("advapi32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+            private static extern int RegGetValueW(IntPtr key, string subKey, string name, uint flags, IntPtr type, StringBuilder value, ref uint size);
+
+            [DllImport("advapi32.dll")]
+            private static extern int RegCloseKey(IntPtr key);
 
             [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
             private static extern SafeFileHandle CreateFile(
@@ -500,6 +603,51 @@ namespace TurnOnTheBass
 
             [DllImport("kernel32.dll", SetLastError = true)]
             private static extern bool EscapeCommFunction(SafeFileHandle file, uint function);
+
+            public static IEnumerable<string> FindPicoPorts()
+            {
+                const string usbEnumerator = "USB";
+                if (CM_Get_Device_ID_List_SizeW(out uint length, usbEnumerator, PresentUsbDevices) != 0 || length <= 1)
+                {
+                    yield break;
+                }
+
+                char[] buffer = new char[length];
+                if (CM_Get_Device_ID_ListW(usbEnumerator, buffer, length, PresentUsbDevices) != 0)
+                {
+                    yield break;
+                }
+
+                foreach (string deviceId in new string(buffer).Split('\0', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    if (!deviceId.StartsWith(PicoUsbIdPrefix, StringComparison.OrdinalIgnoreCase) ||
+                        CM_Locate_DevNodeW(out uint device, deviceId, 0) != 0 ||
+                        CM_Open_DevNode_Key(device, KeyQueryValue, 0, RegistryOpenExisting, out IntPtr key, RegistryHardware) != 0)
+                    {
+                        continue;
+                    }
+
+                    string port = null;
+                    try
+                    {
+                        StringBuilder value = new StringBuilder(32);
+                        uint size = (uint)(value.Capacity * sizeof(char));
+                        if (RegGetValueW(key, null, "PortName", RegistryString, IntPtr.Zero, value, ref size) == 0)
+                        {
+                            port = value.ToString();
+                        }
+                    }
+                    finally
+                    {
+                        RegCloseKey(key);
+                    }
+
+                    if (port != null && port.StartsWith("COM", StringComparison.OrdinalIgnoreCase))
+                    {
+                        yield return port;
+                    }
+                }
+            }
 
             public static SafeFileHandle Open(string portName, int baudRate, int readIntervalTimeoutMs, bool dtrEnable, bool rtsEnable)
             {
@@ -538,9 +686,10 @@ namespace TurnOnTheBass
 
                 CommTimeouts timeouts = new CommTimeouts
                 {
-                    ReadIntervalTimeout = (uint)Mathf.Max(1, readIntervalTimeoutMs),
-                    ReadTotalTimeoutMultiplier = 0,
-                    ReadTotalTimeoutConstant = (uint)Mathf.Max(1, readIntervalTimeoutMs),
+                    // Return available controller input immediately and wait only when the buffer is empty.
+                    ReadIntervalTimeout = uint.MaxValue,
+                    ReadTotalTimeoutMultiplier = uint.MaxValue,
+                    ReadTotalTimeoutConstant = (uint)Math.Max(1, readIntervalTimeoutMs),
                     WriteTotalTimeoutMultiplier = 0,
                     WriteTotalTimeoutConstant = 0
                 };

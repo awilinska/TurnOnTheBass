@@ -10,9 +10,10 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 7950b494b0e14906b5edc598f141f5c6, type: 3}
-  m_Name: Ode Example Rhythm Song
-  m_EditorClassIdentifier: 
-  audioClip: {fileID: 8300000, guid: 92020d0fbfaa67340a984b1ac2756e7c, type: 3}
+  m_Name: Rolling
+  m_EditorClassIdentifier: Assembly-CSharp::TurnOnTheBass.RhythmSongDefinition
+  audioClip: {fileID: 8300000, guid: cbaad6ae487d906488135dd949d02a78, type: 3}
+  highScoreId: c98b8fced2c448c46a4701bdd99326de
   autoGenerateFromAudio: 1
   maximumGeneratedNotes: 0
   bpm: 120
@@ -20,15 +21,9 @@ MonoBehaviour:
   useBeatSync: 1
   startBeat: 0
   noteBeatInterval: 1
-  maxNotes: 64
+  maxNotes: 0
   randomizeLanesWhenPatternEmpty: 1
-  lanePattern:
-  - 0
-  - 1
-  - 2
-  - 3
-  - 2
-  - 1
+  lanePattern: 00000000010000000200000003000000
   enableSpinPhase: 1
   firstSpinAfterNotes: 16
   spinEveryNotes: 16

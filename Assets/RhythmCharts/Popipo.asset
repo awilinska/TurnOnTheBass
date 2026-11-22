@@ -10,9 +10,10 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 7950b494b0e14906b5edc598f141f5c6, type: 3}
-  m_Name: OdeShort
+  m_Name: Popipo
   m_EditorClassIdentifier: Assembly-CSharp::TurnOnTheBass.RhythmSongDefinition
-  audioClip: {fileID: 8300000, guid: 0d821241b35444d41b0ae9ad5260f935, type: 3}
+  audioClip: {fileID: 8300000, guid: b58d11ed1e3f5b44bb2f5c29db98ee39, type: 3}
+  highScoreId: e800f811d54b95d47a25a5a1ff77de2c
   autoGenerateFromAudio: 1
   maximumGeneratedNotes: 0
   bpm: 120

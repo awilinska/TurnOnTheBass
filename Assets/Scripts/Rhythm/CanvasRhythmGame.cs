@@ -41,6 +41,10 @@ namespace TurnOnTheBass
     [DisallowMultipleComponent]
     public sealed class CanvasRhythmGame : MonoBehaviour
     {
+        private const double AudioScheduleLeadSeconds = 0.1d;
+        private const float SongFadeSeconds = 3f;
+        private const string HighScoreKeyPrefix = "Rhythm.HighScore.";
+
         private sealed class ActiveNote
         {
             public int Id;
@@ -64,6 +68,7 @@ namespace TurnOnTheBass
 
         [Header("Completion Screen")]
         [SerializeField] private UiScreenSwitcher screenSwitcher;
+        [SerializeField] private GameObject menuScreen;
         [SerializeField] private GameObject finishedScreen;
         [SerializeField] private RhythmResultsScreen resultsScreen;
         [SerializeField] private bool showFinishedScreenOnComplete = true;
@@ -125,6 +130,7 @@ namespace TurnOnTheBass
         [SerializeField, Min(0)] private int perfectScore = 100;
         [SerializeField, Min(0)] private int goodScore = 70;
         [SerializeField, Min(0)] private int badScore = 35;
+        [SerializeField, Min(0)] private int spinBonusPerTick = 10;
 
         [Header("Spin Phase")]
         [SerializeField] private bool enableSpinPhase = true;
@@ -164,11 +170,18 @@ namespace TurnOnTheBass
         private int spawnedNotes;
         private int laneSequenceIndex;
         private int nextSongNoteIndex;
+        private int runNoteCount;
+        private int noteScore;
         private RhythmGeneratedChart generatedSongChart;
         private bool isPlaying;
         private bool isComplete;
         private bool songPlaybackStarted;
         private float songTimer;
+        private bool songAudioScheduled;
+        private double songStartDspTime;
+        private double songEndDspTime;
+        private double silentSongEndTime;
+        private float songStartVolume;
         private bool spinPhaseActive;
         private int completedSpinCount;
         private int currentSpinPromptPresses;
@@ -181,7 +194,7 @@ namespace TurnOnTheBass
         public bool IsPlaying => isPlaying;
         public bool IsComplete => isComplete;
         public RhythmSongDefinition CurrentSong => songDefinition;
-        public int Score { get; private set; }
+        public int Score => noteScore + completedSpinCount * spinBonusPerTick;
         public int Combo { get; private set; }
         public int MaxCombo { get; private set; }
         public int PerfectHits { get; private set; }
@@ -198,9 +211,9 @@ namespace TurnOnTheBass
         {
             get
             {
-                int totalPossibleNotes = totalNotesToSpawn > 0 ? totalNotesToSpawn : Mathf.Max(1, TotalJudgedNotes);
-                float maxScore = Mathf.Max(1, totalPossibleNotes * perfectScore);
-                return Mathf.Clamp01(Score / maxScore);
+                int totalPossibleNotes = runNoteCount > 0 ? runNoteCount : Mathf.Max(1, TotalJudgedNotes);
+                float maxScore = Mathf.Max(1f, (float)totalPossibleNotes * perfectScore);
+                return Mathf.Clamp01(noteScore / maxScore);
             }
         }
 
@@ -229,12 +242,28 @@ namespace TurnOnTheBass
             ApplyDefaultLaneNames();
         }
 
+        private void OnDisable()
+        {
+            if (isPlaying)
+            {
+                EndRun(false);
+            }
+        }
+
         private void Update()
         {
             if (!isPlaying)
             {
                 return;
             }
+
+#if ENABLE_INPUT_SYSTEM
+            if (songDefinition != null && menuScreen != null && Keyboard.current?.escapeKey.wasPressedThisFrame == true)
+            {
+                ReturnToMenu();
+                return;
+            }
+#endif
 
             float deltaTime = useUnscaledTime ? Time.unscaledDeltaTime : Time.deltaTime;
             if (startTimer > 0f)
@@ -247,19 +276,39 @@ namespace TurnOnTheBass
             }
 
             StartSongPlaybackIfNeeded();
-            if (songPlaybackStarted)
-            {
-                songTimer += deltaTime;
-            }
+            songTimer += deltaTime;
 
             if (spinPhaseActive)
             {
                 HandleSpinInput();
+            }
+            else
+            {
+                HandleKeyboardInput();
+            }
+        }
+
+        private void LateUpdate()
+        {
+            if (!isPlaying || !songPlaybackStarted)
+            {
+                return;
+            }
+
+            if (HasSongEnded())
+            {
+                CompleteGame();
+                return;
+            }
+
+            float deltaTime = useUnscaledTime ? Time.unscaledDeltaTime : Time.deltaTime;
+            if (spinPhaseActive)
+            {
                 UpdateSpinPrompt(deltaTime);
                 return;
             }
 
-            HandleKeyboardInput();
+            // Judge this frame's inputs against the position the player last saw.
             UpdateActiveNotes(deltaTime);
             if (TryBeginSpinPromptIfReady())
             {
@@ -289,12 +338,17 @@ namespace TurnOnTheBass
 
         public void BeginSong(RhythmSongDefinition song)
         {
-            SetSong(song);
+            songDefinition = song;
             BeginGame();
         }
 
         public void BeginGame()
         {
+            if (songAudioScheduled)
+            {
+                StopSongPlayback();
+            }
+
             ApplySongDefinition();
 
             if (activatePanelOnBegin)
@@ -306,7 +360,7 @@ namespace TurnOnTheBass
             ValidateConfig();
             ClearActiveNotes();
 
-            Score = 0;
+            noteScore = 0;
             Combo = 0;
             MaxCombo = 0;
             PerfectHits = 0;
@@ -343,17 +397,26 @@ namespace TurnOnTheBass
 
         public void StopGame()
         {
-            isPlaying = false;
-            isComplete = true;
-            StopSongPlayback();
-            ClearActiveNotes();
+            EndRun(true);
             RefreshUi();
-            SetSpinUiActive(false);
-            ResetTargetPulse();
 
             if (hidePanelOnStop)
             {
                 PanelRoot.SetActive(false);
+            }
+        }
+
+        private void ReturnToMenu()
+        {
+            EndRun(false);
+            PanelRoot.SetActive(false);
+            if (screenSwitcher != null)
+            {
+                screenSwitcher.Show(menuScreen);
+            }
+            else
+            {
+                menuScreen.SetActive(true);
             }
         }
 
@@ -364,6 +427,11 @@ namespace TurnOnTheBass
 
         public void HandleNoteClicked(int noteId)
         {
+            if (!isPlaying)
+            {
+                return;
+            }
+
             ActiveNote note = FindActiveNote(noteId);
             if (note == null || note.Judged)
             {
@@ -383,6 +451,11 @@ namespace TurnOnTheBass
 
         public void HandleLanePressed(int laneIndex)
         {
+            if (!isPlaying || !songPlaybackStarted || spinPhaseActive)
+            {
+                return;
+            }
+
             ActiveNote note = FindClosestPendingNoteInLane(laneIndex);
             if (note == null)
             {
@@ -403,7 +476,7 @@ namespace TurnOnTheBass
 
         public void HandleSpinTick()
         {
-            if (!spinPhaseActive)
+            if (!isPlaying || !spinPhaseActive)
             {
                 return;
             }
@@ -412,6 +485,7 @@ namespace TurnOnTheBass
             completedSpinCount++;
             currentSpinPromptPresses++;
             RefreshSpinUi();
+            RefreshUi();
 
             if (spinPresses >= requiredSpinPresses)
             {
@@ -478,7 +552,7 @@ namespace TurnOnTheBass
 
         private void UpdateSpawning(float deltaTime)
         {
-            if (totalNotesToSpawn > 0 && spawnedNotes >= totalNotesToSpawn)
+            if (runNoteCount > 0 && spawnedNotes >= runNoteCount)
             {
                 return;
             }
@@ -494,7 +568,7 @@ namespace TurnOnTheBass
 
                 spawnTimer += spawnIntervalSeconds;
 
-                if (totalNotesToSpawn > 0 && spawnedNotes >= totalNotesToSpawn)
+                if (runNoteCount > 0 && spawnedNotes >= runNoteCount)
                 {
                     break;
                 }
@@ -503,13 +577,8 @@ namespace TurnOnTheBass
 
         private void UpdateSongSpawning()
         {
-            if (!ShouldUseSongSync() || totalNotesToSpawn <= 0 || spawnedNotes >= totalNotesToSpawn)
-            {
-                return;
-            }
-
             float songTime = GetSongTime();
-            while (nextSongNoteIndex < totalNotesToSpawn)
+            while (nextSongNoteIndex < runNoteCount)
             {
                 int laneIndex = GetSongLaneIndex(nextSongNoteIndex);
                 if (laneIndex < 0)
@@ -571,7 +640,12 @@ namespace TurnOnTheBass
 
         private void CheckForCompletion()
         {
-            if (loopWhenFinished && totalNotesToSpawn > 0 && AreAllNotesProcessed() && activeNotes.Count == 0)
+            if (runNoteCount <= 0 || !AreAllNotesProcessed() || activeNotes.Count != 0)
+            {
+                return;
+            }
+
+            if (loopWhenFinished)
             {
                 spawnedNotes = 0;
                 nextSongNoteIndex = 0;
@@ -579,12 +653,9 @@ namespace TurnOnTheBass
                 return;
             }
 
-            if (totalNotesToSpawn > 0 && AreAllNotesProcessed() && activeNotes.Count == 0)
+            if (!spinPhaseActive && !ShouldHoldSpawningForSpin() && !songAudioScheduled)
             {
-                if (!spinPhaseActive && !ShouldHoldSpawningForSpin() && !ShouldWaitForSongAudio())
-                {
-                    CompleteGame();
-                }
+                CompleteGame();
             }
         }
 
@@ -612,10 +683,10 @@ namespace TurnOnTheBass
         {
             if (ShouldUseSongSync())
             {
-                return nextSongNoteIndex >= totalNotesToSpawn;
+                return nextSongNoteIndex >= runNoteCount;
             }
 
-            return spawnedNotes >= totalNotesToSpawn;
+            return spawnedNotes >= runNoteCount;
         }
 
         private void BeginSpinPrompt()
@@ -673,10 +744,9 @@ namespace TurnOnTheBass
 
         private void CompleteGame()
         {
-            isPlaying = false;
-            isComplete = true;
-            StopSongPlayback();
-            ShowFinishedScreenIfNeeded();
+            EndRun(true);
+            int highScore = SaveHighScore(out bool isNewHighScore);
+            ShowFinishedScreenIfNeeded(highScore, isNewHighScore);
 
             if (hidePanelOnComplete)
             {
@@ -684,7 +754,39 @@ namespace TurnOnTheBass
             }
         }
 
-        private void ShowFinishedScreenIfNeeded()
+        private void EndRun(bool completed)
+        {
+            isPlaying = false;
+            isComplete = completed;
+            spinPhaseActive = false;
+            StopSongPlayback(forceStop: !completed);
+            ClearActiveNotes();
+            SetSpinUiActive(false);
+            ResetTargetPulse();
+        }
+
+        private int SaveHighScore(out bool isNewHighScore)
+        {
+            isNewHighScore = false;
+            if (songDefinition == null)
+            {
+                return 0;
+            }
+
+            string key = HighScoreKeyPrefix + songDefinition.HighScoreId;
+            int highScore = PlayerPrefs.GetInt(key);
+            if (Score > highScore)
+            {
+                highScore = Score;
+                PlayerPrefs.SetInt(key, highScore);
+                PlayerPrefs.Save();
+                isNewHighScore = true;
+            }
+
+            return highScore;
+        }
+
+        private void ShowFinishedScreenIfNeeded(int highScore, bool isNewHighScore)
         {
             if (!showFinishedScreenOnComplete)
             {
@@ -693,7 +795,7 @@ namespace TurnOnTheBass
 
             if (resultsScreen != null)
             {
-                resultsScreen.SetResults(Accuracy, MaxCombo);
+                resultsScreen.SetResults(Accuracy, MaxCombo, Score, highScore, isNewHighScore);
             }
 
             if (screenSwitcher != null && finishedScreen != null)
@@ -858,25 +960,31 @@ namespace TurnOnTheBass
 
         private float GetSongTime()
         {
-            if (audioSource != null && audioSource.clip != null)
-            {
-                return audioSource.time;
-            }
-
-            return songTimer;
+            return songAudioScheduled ? (float)(AudioSettings.dspTime - songStartDspTime) : songTimer;
         }
 
-        private bool ShouldWaitForSongAudio()
+        private bool HasSongEnded()
         {
-            return songDefinition != null &&
-                   audioSource != null &&
-                   audioSource.clip != null &&
-                   audioSource.isPlaying;
+            if (songDefinition == null)
+            {
+                return false;
+            }
+
+            if (!songAudioScheduled)
+            {
+                return Time.unscaledTimeAsDouble >= silentSongEndTime;
+            }
+
+            double remainingSeconds = songEndDspTime - AudioSettings.dspTime;
+            float fadeDuration = Mathf.Min(SongFadeSeconds, (float)(songEndDspTime - songStartDspTime) * 0.5f);
+            audioSource.volume = songStartVolume * Mathf.Clamp01((float)remainingSeconds / fadeDuration);
+            return remainingSeconds <= 0d;
         }
 
         private void ApplySongDefinition()
         {
             generatedSongChart = null;
+            runNoteCount = totalNotesToSpawn;
 
             if (songDefinition == null)
             {
@@ -895,7 +1003,7 @@ namespace TurnOnTheBass
             {
                 generatedSongChart = chart;
                 spawnIntervalSeconds = Mathf.Max(0.05f, chart.AverageNoteIntervalSeconds);
-                totalNotesToSpawn = chart.Notes.Count;
+                runNoteCount = chart.Notes.Count;
                 randomizeLanes = false;
                 enableSpinPhase = songDefinition.EnableSpinPhase;
                 firstSpinAfterNotes = chart.FirstSpinAfterNotes;
@@ -912,7 +1020,14 @@ namespace TurnOnTheBass
         private void ApplyManualSongFallback()
         {
             spawnIntervalSeconds = Mathf.Max(0.05f, songDefinition.NoteIntervalSeconds);
-            totalNotesToSpawn = songDefinition.GetResolvedNoteCount(totalNotesToSpawn);
+            runNoteCount = songDefinition.GetResolvedNoteCount(totalNotesToSpawn);
+            if (songDefinition.UseBeatSync)
+            {
+                float targetTimeAvailable = songDefinition.PlayableDurationSeconds - GetSongTargetTime(0);
+                int playableNotes = Mathf.Max(0, Mathf.CeilToInt(targetTimeAvailable / songDefinition.NoteIntervalSeconds));
+                runNoteCount = Mathf.Min(runNoteCount, playableNotes);
+            }
+
             randomizeLanes = songDefinition.RandomizeLanesWhenPatternEmpty;
             enableSpinPhase = songDefinition.EnableSpinPhase;
             firstSpinAfterNotes = songDefinition.FirstSpinAfterNotes;
@@ -956,25 +1071,42 @@ namespace TurnOnTheBass
                 return;
             }
 
+            float duration = songDefinition.PlayableDurationSeconds;
+            silentSongEndTime = Time.unscaledTimeAsDouble + duration;
             EnsureAudioSource();
-            if (audioSource == null || songDefinition.AudioClip == null)
+            if (audioSource == null || songDefinition.AudioClip == null || duration <= 0f)
             {
                 return;
             }
 
             audioSource.clip = songDefinition.AudioClip;
-            audioSource.time = 0f;
-            audioSource.Play();
+            audioSource.loop = false;
+            songStartVolume = audioSource.volume;
+            songStartDspTime = AudioSettings.dspTime + AudioScheduleLeadSeconds;
+            songEndDspTime = songStartDspTime + duration;
+            audioSource.PlayScheduled(songStartDspTime);
+            audioSource.SetScheduledEndTime(songEndDspTime);
+            songAudioScheduled = true;
         }
 
-        private void StopSongPlayback()
+        private void StopSongPlayback(bool forceStop = false)
         {
-            if (!stopAudioOnComplete || audioSource == null || !audioSource.isPlaying)
+            if (songAudioScheduled)
             {
+                songAudioScheduled = false;
+                if (audioSource != null)
+                {
+                    audioSource.Stop();
+                    audioSource.volume = songStartVolume;
+                }
+
                 return;
             }
 
-            audioSource.Stop();
+            if ((forceStop || stopAudioOnComplete) && audioSource != null && audioSource.isPlaying)
+            {
+                audioSource.Stop();
+            }
         }
 
         private bool CanSpawnLane(int laneIndex)
@@ -1075,17 +1207,17 @@ namespace TurnOnTheBass
             switch (rating)
             {
                 case RhythmHitRating.Perfect:
-                    Score += perfectScore;
+                    noteScore += perfectScore;
                     Combo++;
                     PerfectHits++;
                     break;
                 case RhythmHitRating.Good:
-                    Score += goodScore;
+                    noteScore += goodScore;
                     Combo++;
                     GoodHits++;
                     break;
                 case RhythmHitRating.Bad:
-                    Score += badScore;
+                    noteScore += badScore;
                     Combo++;
                     BadHits++;
                     break;
@@ -1435,7 +1567,7 @@ namespace TurnOnTheBass
 #endif
     }
 
-    public sealed class CanvasRhythmNote : MonoBehaviour, IPointerClickHandler
+    public sealed class CanvasRhythmNote : MonoBehaviour, IPointerDownHandler
     {
         private CanvasRhythmGame rhythmGame;
         private int noteId;
@@ -1446,9 +1578,9 @@ namespace TurnOnTheBass
             noteId = id;
         }
 
-        public void OnPointerClick(PointerEventData eventData)
+        public void OnPointerDown(PointerEventData eventData)
         {
-            if (rhythmGame != null)
+            if (eventData.button == PointerEventData.InputButton.Left && rhythmGame != null)
             {
                 rhythmGame.HandleNoteClicked(noteId);
             }

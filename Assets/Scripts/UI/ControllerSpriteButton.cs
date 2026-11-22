@@ -81,8 +81,8 @@ namespace TurnOnTheBass.UI
                 return;
             }
 
+            // Carousel buttons move under the pointer when the selection changes.
             ownerMenu?.Select(this);
-            ownerCarousel?.Select(this, false);
         }
 
         public void OnPointerClick(PointerEventData eventData)
